@@ -1,0 +1,255 @@
+CLASS zfrpa_cla_dio_sql_dummy DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
+
+  PUBLIC SECTION.
+
+    INTERFACES if_oo_adt_classrun .
+    INTERFACES if_amdp_marker_hdb.
+
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+
+    """ TAB M9
+
+*@EndUserText.label : 'dummy'
+*@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+*@AbapCatalog.tableCategory : #TRANSPARENT
+*@AbapCatalog.deliveryClass : #A
+*@AbapCatalog.dataMaintenance : #RESTRICTED
+*define table zfrpa_tab_dio_m9 {
+*
+*  key client          : abap.clnt not null;
+*  key employee_number : pernr_d not null;
+*  employee_name       : abap.sstring(50);
+*  birth_date          : abap.dats;
+*
+*}
+
+    """ TAB M8
+*@EndUserText.label : 'dummy'
+*@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+*@AbapCatalog.tableCategory : #TRANSPARENT
+*@AbapCatalog.deliveryClass : #A
+*@AbapCatalog.dataMaintenance : #RESTRICTED
+*define table zfrpa_tab_dio_m8 {
+*
+*  key client        : abap.clnt not null;
+*  key serial_number : abap.int8 not null;
+*  key initials      : abap.char(2) not null;
+*  custom_date       : abap.dats;
+*
+*}
+
+
+
+    METHODS insert_data_database_tab.
+    METHODS update_data_database_tab.
+    METHODS upsert_data_database_tab.
+    METHODS merge_data_database_tab.
+    METHODS delete_data_database_tab.
+    METHODS truncate_data_database_tab.
+
+ENDCLASS.
+
+
+
+CLASS zfrpa_cla_dio_sql_dummy IMPLEMENTATION.
+
+  METHOD truncate_data_database_tab
+  BY DATABASE PROCEDURE FOR HDB LANGUAGE SQLSCRIPT
+  USING zfrpa_tab_dio_m9 zfrpa_tab_dio_m8.
+
+    -- CAREFULL with this, erases all database, no ROLLBACK allowed
+    -- NOT ALLOWED ON AMDP
+    -- truncate table zfrpa_tab_dio_m9;
+    -- truncate table zfrpa_tab_dio_m8;
+
+    -- Alternative
+    delete from zfrpa_tab_dio_m9 where client = SESSION_CONTEXT('CLIENT');
+    delete from zfrpa_tab_dio_m8 where client = SESSION_CONTEXT('CLIENT');
+
+    dummy_select2
+    =
+    select * from  zfrpa_tab_dio_m8;
+    dummy_select1
+    =
+    select * from  zfrpa_tab_dio_m9;
+  endmethod.
+
+  METHOD delete_data_database_tab
+  BY DATABASE PROCEDURE FOR HDB LANGUAGE SQLSCRIPT
+  USING zfrpa_tab_dio_m9.
+
+    -- Here if you omit the where clause the all the database will be erased.
+    -- However you can use ROLLBACK in this case to undo the deletion.
+
+    delete from zfrpa_tab_dio_m9
+    where client = SESSION_CONTEXT('CLIENT')
+    and employee_number like '9%';
+
+    -- commit; NOT PERMITTED
+
+    delete from zfrpa_tab_dio_m9
+    where client = SESSION_CONTEXT('CLIENT')
+    and employee_number = '00002986';
+
+    -- rollback; NOT PERMITTED
+
+    dummy_select1
+    =
+    select * from  zfrpa_tab_dio_m9;
+  endmethod.
+
+
+  METHOD upsert_data_database_tab
+  BY DATABASE PROCEDURE FOR HDB LANGUAGE SQLSCRIPT
+  USING zfrpa_tab_dio_m9 zfrpa_tab_dio_m8.
+
+    -- Upsert is a combination of insert and modify
+    -- WITH PRIMARY KEY is needed otherwise it will insert first record and overwrite it after
+
+    declare my_dummy_tab table ( client nvarchar( 3 ), employee_number nvarchar( 8 ), employee_name nvarchar( 50 ), birth_date nvarchar( 8 ) );
+
+    -- UPSERT single records
+    upsert zfrpa_tab_dio_m8 values ( SESSION_CONTEXT('CLIENT'), 00002984, 'XX', '20001010' ) with primary key;
+    upsert zfrpa_tab_dio_m9 values ( SESSION_CONTEXT('CLIENT'), 00002984, 'DUMMY NAME', '20001010' ) with primary key;
+
+    -- If the records does not exists, then it insert it.
+    upsert zfrpa_tab_dio_m8 values ( SESSION_CONTEXT('CLIENT'), 00002988, 'XX', '20001010' ) with primary key;
+
+    -- We can also update/insert using another table as data source / query or local table
+     insert into :my_dummy_tab values ( SESSION_CONTEXT('CLIENT'), 00002986, 'DUMMY EMP', to_dats( current_date ) );
+     insert into :my_dummy_tab values ( SESSION_CONTEXT('CLIENT'), 99009900, 'DUMMY EMP', to_dats( current_date ) );
+     insert into :my_dummy_tab values ( SESSION_CONTEXT('CLIENT'), 99009901, 'DUMMY EMP', to_dats( current_date ) );
+     insert into :my_dummy_tab values ( SESSION_CONTEXT('CLIENT'), 99009902, 'DUMMY EMP', to_dats( current_date ) );
+
+     upsert zfrpa_tab_dio_m9 ( client, employee_number, employee_name, birth_date )
+     select * from :my_dummy_tab;
+
+    dummy_select1
+    =
+    select * from  zfrpa_tab_dio_m9;
+
+    dummy_select2
+    =
+    select * from  zfrpa_tab_dio_m8;
+  endmethod.
+
+
+  METHOD merge_data_database_tab
+  BY DATABASE PROCEDURE FOR HDB LANGUAGE SQLSCRIPT
+  USING zfrpa_tab_dio_m9 zfrpa_tab_dio_m8.
+
+    -- The syntax is clearer on this one than on UPDATE FROM
+
+    -- MERGE INTO <target_table> [ <partition_restriction> ] [ [ AS ] <alias> ]
+    -- USING <table_reference>
+    -- ON <search_condition> <merge_operation_specification>
+    -- WHEN MATCHED THEN UPDATE SET <column updates>
+    -- WHEN NOT MATCHED THEN INSERT <column list> value(<values>)
+
+    -- WHEN [NOT] MATCHED are optional, if you omit one of then the syntax corresponds to an update or insert.
+
+    -- Tables are reset, look at main method
+    -- Lets insert a new dummy one
+    insert into zfrpa_tab_dio_m9 ( client, employee_number, employee_name, birth_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002990, 'DUMMY ENTRY', '20000101' );
+
+
+    dummy_select1
+    =
+    select * from  zfrpa_tab_dio_m9;
+
+    merge into zfrpa_tab_dio_m8 as target_db_table
+    using zfrpa_tab_dio_m9 as source_db_table
+    on ( target_db_table.serial_number = source_db_table.employee_number )
+    when matched then
+        update set  target_db_table.initials = INITCAP( LEFT( SUBSTR_BEFORE( source_db_table.employee_name, ' ' ), 1 ) ) || INITCAP( LEFT( SUBSTR_AFTER( source_db_table.employee_name, ' ' ), 1 ) ),
+                    target_db_table.custom_date = source_db_table.birth_date
+    when not matched then
+        insert values ( source_db_table.client, source_db_table.employee_number, 'XX', to_dats( current_date ) );
+
+    dummy_select2
+    =
+    select * from  zfrpa_tab_dio_m8;
+  endmethod.
+
+
+  METHOD update_data_database_tab
+  BY DATABASE PROCEDURE FOR HDB LANGUAGE SQLSCRIPT
+  USING zfrpa_tab_dio_m9 zfrpa_tab_dio_m8.
+
+    -- Cross join will be performed on the update statement
+
+    update target_db_table
+    set target_db_table.initials = INITCAP( LEFT( SUBSTR_BEFORE( source_db_table.employee_name, ' ' ), 1 ) ) || INITCAP( LEFT( SUBSTR_AFTER( source_db_table.employee_name, ' ' ), 1 ) ),
+        target_db_table.custom_date = source_db_table.birth_date
+    from zfrpa_tab_dio_m9 as source_db_table,
+         zfrpa_tab_dio_m8 as target_db_table
+    where source_db_table.employee_number = target_db_table.serial_number;
+
+    dummy_select1
+    =
+    select * from  zfrpa_tab_dio_m9;
+
+    dummy_select2
+    =
+    select * from  zfrpa_tab_dio_m8;
+  ENDMETHOD.
+
+
+  METHOD insert_data_database_tab
+  BY DATABASE PROCEDURE FOR HDB LANGUAGE SQLSCRIPT
+  USING zfrpa_tab_dio_m9 zfrpa_tab_dio_m8.
+
+    -- On this example, the code was tested on SAP ON PREMISE machine
+    -- modifying real db tables.
+
+    -- M9 Table
+    insert into zfrpa_tab_dio_m9 ( client, employee_number, employee_name, birth_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002984, 'Nangus Dongus', '19871121' );
+   insert into zfrpa_tab_dio_m9 ( client, employee_number, employee_name, birth_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002985, 'Mangus Dongus', '19940112' );
+   insert into zfrpa_tab_dio_m9 ( client, employee_number, employee_name, birth_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002986, 'Tangus Dongus', '20061225' );
+   insert into zfrpa_tab_dio_m9 ( client, employee_number, employee_name, birth_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002987, 'Cangus Dongus', '20210317' );
+
+
+    dummy_select1
+    =
+    select * from  zfrpa_tab_dio_m9;
+
+    -- M8 table
+   insert into zfrpa_tab_dio_m8 ( client, serial_number, custom_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002984, '19000101' );
+   insert into zfrpa_tab_dio_m8 ( client, serial_number, custom_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002985, '19000101' );
+   insert into zfrpa_tab_dio_m8 ( client, serial_number, custom_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002986,  '19000101' );
+   insert into zfrpa_tab_dio_m8 ( client, serial_number, custom_date )
+        values (  SESSION_CONTEXT('CLIENT'), 00002987, '19000101' );
+
+    dummy_select2
+    =
+    select * from  zfrpa_tab_dio_m8;
+  ENDMETHOD.
+
+  METHOD if_oo_adt_classrun~main.
+    me->truncate_data_database_tab( ).
+
+    me->insert_data_database_tab( ).
+    me->update_data_database_tab( ).
+    me->upsert_data_database_tab( ).
+
+    me->truncate_data_database_tab( ).
+    me->insert_data_database_tab( ).
+
+    me->merge_data_database_tab( ).
+    me->delete_data_database_tab( ).
+
+  ENDMETHOD.
+
+ENDCLASS.
